@@ -196,6 +196,8 @@ def update_modal(ack, body, client):
     print('radio_button_selected_successfully')
     prev_blocks = body['view']['blocks'] # 0 > description, 1 > divider, 2 > radio, 3 > dropdown
     prev_blocks[2]['accessory']['initial_option'] = create_initial_options(body, 'add_update_radio_block', 'add_update_radio_buttons_action')
+    #
+    next_blocks = prev_blocks
     prev_blocks.append(create_block(
                         "Select the Relevant Department",
                         text2 = "Select an item",
@@ -205,7 +207,7 @@ def update_modal(ack, body, client):
                         options = departments_list(),
                     ))
     choice = body['actions'][0]['selected_option']['value']
-    if choice == 'value-0':
+    if choice == 'value-0':  
         client.views_update(
             # Pass the view_id
             view_id=body["view"]["id"],
@@ -220,8 +222,88 @@ def update_modal(ack, body, client):
                 "blocks": prev_blocks
             }
         )
+    
+    #Adding new departments from Admin Shortcuts
+
     elif choice == 'value-1':
-        pass
+        client.views_update(
+            view_id = body["view"]["id"],
+            view = {
+                "type": "modal",
+                "title": {"type": "plain_text", "text": "Stealth Mode"},
+                "callback_id" : "update_files_department",
+                "close": {"type": "plain_text", "text": "Close"},
+                "submit": {"type": "plain_text", "text": "Submit"},
+                
+                "blocks": 
+                [   
+                   
+
+                    {
+                        "type": "section",
+                        "text": {
+                            "type" : "plain_text",
+                            "text" : "Admin Shortcuts -Add new departments here"
+                        }
+                    },
+                    
+                    #input text box for entering department names, use comma to seperate if multiple values.
+                {
+                            "type": "input",
+                            "block_id": "add_dept",
+                            "element": {
+                                "type": "plain_text_input",
+                                "multiline": True,
+                                "action_id": "plain_text_input_action"
+                            },
+                            "label": {
+                                "type": "plain_text",
+                                "text": "Enter department names seperated by comma",
+                                "emoji": True
+                            }
+                        }
+                ]
+                   }
+        )
+
+#Function to update departments.txt file 
+@app.view("update_files_department")
+def handle_view_events(client, ack, body):
+    ack()
+
+    #extracting input values from textbox
+    new_dept = body['view']['state']['values']['add_dept']['plain_text_input_action']['value']
+    new_dept = new_dept.split(',')
+    with open(f'departments.txt','a') as fp:
+        for cat in new_dept:
+            if len(cat) > 0:
+                fp.write(cat+'\n')
+
+                #creating categories.txt file for the new department
+                f = open(f'{cat}_categories.txt', "x")
+        generate_master_dict()
+    print("Success!")
+
+    #sending a success message to user
+    client.views_open(
+        trigger_id = body["trigger_id"],
+        view =  {
+            "type": "modal",
+            "title": {"type": "plain_text", "text": "Stealth Mode"},
+            "close": {"type": "plain_text", "text": "Close"},
+            "blocks": [
+                {
+			"type": "header",
+			"text": {
+				"type": "plain_text",
+				"text": "Department added successfully!",
+				"emoji": True
+			}
+		}
+            ]
+        }
+    )
+        
 
 @app.view("update_files")
 def handle_view_events(client,ack, body):
