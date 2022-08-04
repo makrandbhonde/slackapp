@@ -1,4 +1,6 @@
+from doctest import master
 import os
+from venv import create
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 import requests
@@ -190,15 +192,20 @@ def open_modal(ack, body, shortcut, client):
         }
         )
 
+
+
 @app.action("add_update_radio_buttons_action")
 def update_modal(ack, body, client):
     ack()
     print('radio_button_selected_successfully')
     prev_blocks = body['view']['blocks'] # 0 > description, 1 > divider, 2 > radio, 3 > dropdown
     prev_blocks[2]['accessory']['initial_option'] = create_initial_options(body, 'add_update_radio_block', 'add_update_radio_buttons_action')
-    #
-    next_blocks = prev_blocks
-    prev_blocks.append(create_block(
+    choice = body['actions'][0]['selected_option']['value']
+    if choice == 'value-0':
+        if len(prev_blocks) > 3:
+            prev_blocks.pop()
+
+        prev_blocks.append(create_block(
                         "Select the Relevant Department",
                         text2 = "Select an item",
                         block_id = 'dept_list_drop_down_block',
@@ -206,26 +213,49 @@ def update_modal(ack, body, client):
                         action = 'admin_dept_drop_down_action',
                         options = departments_list(),
                     ))
-    choice = body['actions'][0]['selected_option']['value']
-    if choice == 'value-0':  
+
         client.views_update(
             # Pass the view_id
             view_id=body["view"]["id"],
-            # String that represents view state to protect against race conditions
-            hash=body["view"]["hash"],
-            # View payload with updated blocks
-            view={
-                "type": "modal",
-                # View identifier
-                "callback_id": "dept_category_selection2",
-                "title": {"type": "plain_text", "text": "Stealth Mode"},
-                "blocks": prev_blocks
-            }
-        )
+                # String that represents view state to protect against race conditions
+                hash=body["view"]["hash"],
+                # View payload with updated blocks
+                view={
+                    "type": "modal",
+                    # View identifier
+                    "callback_id": "dept_category_selection2",
+                    "title": {"type": "plain_text", "text": "Stealth Mode"},
+                    # "submit": {"type":"plain_text", "text":"susmit"},
+                    "blocks": prev_blocks
+                    }
+            )
+            
+        
     
     #Adding new departments from Admin Shortcuts
 
     elif choice == 'value-1':
+        print("first time add...", len(prev_blocks))
+        if len(prev_blocks) > 3:
+            prev_blocks.pop()
+        prev_blocks.append(
+        
+            {
+                "type": "input",
+                "block_id": "enter_dept_text_block",
+                "element": {
+                    "type": "plain_text_input",
+                    "multiline": True,
+                    "action_id": "plain_text_input_action"
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Enter departments, separated by commas",
+                    "emoji": True
+                }
+            }
+        )
+
         client.views_update(
             view_id = body["view"]["id"],
             view = {
@@ -235,36 +265,10 @@ def update_modal(ack, body, client):
                 "close": {"type": "plain_text", "text": "Close"},
                 "submit": {"type": "plain_text", "text": "Submit"},
                 
-                "blocks": 
-                [   
-                   
+                "blocks": prev_blocks
+               } )
+        
 
-                    {
-                        "type": "section",
-                        "text": {
-                            "type" : "plain_text",
-                            "text" : "Admin Shortcuts -Add new departments here"
-                        }
-                    },
-                    
-                    #input text box for entering department names, use comma to seperate if multiple values.
-                {
-                            "type": "input",
-                            "block_id": "add_dept",
-                            "element": {
-                                "type": "plain_text_input",
-                                "multiline": True,
-                                "action_id": "plain_text_input_action"
-                            },
-                            "label": {
-                                "type": "plain_text",
-                                "text": "Enter department names seperated by comma",
-                                "emoji": True
-                            }
-                        }
-                ]
-                   }
-        )
 
 #Function to update departments.txt file 
 @app.view("update_files_department")
@@ -272,7 +276,7 @@ def handle_view_events(client, ack, body):
     ack()
 
     #extracting input values from textbox
-    new_dept = body['view']['state']['values']['add_dept']['plain_text_input_action']['value']
+    new_dept = body['view']['state']['values']['enter_dept_text_block']['plain_text_input_action']['value']
     new_dept = new_dept.split(',')
     with open(f'departments.txt','a') as fp:
         for cat in new_dept:
@@ -350,26 +354,34 @@ def update_modal(ack, body, client):
     ack()
     print('admin_dept_drop_down_action_selected_successfully')
     prev_blocks = body['view']['blocks'] # 0 > description, 1 > divider, 2 > radio, 3 > dropdown
-    prev_blocks[2]['accessory']['initial_option'] = create_initial_options(body, 'add_update_radio_block', 'add_update_radio_buttons_action')
-    prev_blocks[3]['accessory']['initial_option'] = create_initial_options(body, 'dept_list_drop_down_block', 'admin_dept_drop_down_action')
-    prev_blocks.append(
-        create_block( 
-            "Select",
-            block_id = "add_delete_category_block",
-            options = create_options(
-                [
-                    ("Add New Category","add_cat"),
-                    ("Delete a Category","del_cat")
-                ]
-            ),
-            action = "add_delete_category_action",
-            type1 = 'radio_buttons'
+    if len(prev_blocks) > 4:
+        #meaning ---> dept is modified, so we will change the categories i.e. options
+        prev_blocks[3]['accessory']['initial_option'] = create_initial_options(body, 'dept_list_drop_down_block', 'admin_dept_drop_down_action')
+        prev_blocks[-1]['element']['options'] = master_data[prev_blocks[3]['accessory']['initial_option']['text']['text']]['categories']
+    
+    else:
+        #meaning ---> dept is selected for the first time
+        prev_blocks[2]['accessory']['initial_option'] = create_initial_options(body, 'add_update_radio_block', 'add_update_radio_buttons_action')
+        prev_blocks[3]['accessory']['initial_option'] = create_initial_options(body, 'dept_list_drop_down_block', 'admin_dept_drop_down_action')
+
+        prev_blocks.append(
+            create_block( 
+                "Select",
+                block_id = "add_delete_category_block",
+                options = create_options(
+                    [
+                        ("Add New Category","add_cat"),
+                        ("Delete a Category","del_cat")
+                    ]
+                ),
+                action = "add_delete_category_action",
+                type1 = 'radio_buttons'
+            )
         )
-    )
     client.views_update(
-        # Pass the view_id
-        view_id=body["view"]["id"],
-        # String that represents view state to protect against race conditions
+            # Pass the view_id
+            view_id=body["view"]["id"],
+            # String that represents view state to protect against race conditions
         hash=body["view"]["hash"],
         # View payload with updated blocks
         view={
@@ -393,18 +405,24 @@ def update_modal(ack, body, client):
     prev_blocks[4]['accessory']['initial_option'] = create_initial_options(body, 'add_delete_category_block', 'add_delete_category_action')
     # check delete or add
     if prev_blocks[4]['accessory']['initial_option']['value'] == 'del_cat':
+        #print(len(prev_blocks))    #--> 5
+        if len(prev_blocks) > 5:
+            prev_blocks.pop()
         prev_blocks.append(
-            create_block(
-                "Select the category you want to delete",
-                text2 = "Category",
-                type2 = 'input',
-                block_id = 'dept_category_list_drop_down_block',
-                type1 = 'static_select',
-                action = 'dept_category_list_drop_down_action',
-                options = master_data[prev_blocks[3]['accessory']['initial_option']['text']['text']]['categories'],
+                create_block(
+                    "Select the category you want to delete",
+                    text2 = "Category",
+                    type2 = 'input',
+                    block_id = 'dept_category_list_drop_down_block',
+                    type1 = 'static_select',
+                    action = 'dept_category_list_drop_down_action',
+                    options = master_data[prev_blocks[3]['accessory']['initial_option']['text']['text']]['categories'],
+                )
             )
-        )
+       
     else:
+        if len(prev_blocks) > 5:
+            prev_blocks.pop()
         prev_blocks.append(
             {
                 "type": "input",
